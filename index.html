@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+
+<head>
+	<link href="/app.css" rel="stylesheet" />
+	<style>
+		#apple-pay-button {
+			height: 48px;
+			width: 100%;
+			display: inline-block;
+			-webkit-appearance: -apple-pay-button;
+			-apple-pay-button-type: plain;
+			-apple-pay-button-style: black;
+		}
+	</style>
+	<script type="application/javascript"
+		src="//cdn.rawgit.com/Alorel/console-log-html/master/console-log-html.min.js"></script>
+	<script type="text/javascript" src="https://web.squarecdn.com/v1/square.js"></script>
+	<script>
+		const appId = 'sq0idp-wLM4vHTsA4vpk6eMflCqvQ';
+		const locationId = 'JD093NMTT4DSM';
+
+		async function initializeCard(payments) {
+			const card = await payments.card();
+			await card.attach('#card-container');
+
+			return card;
+		}
+
+		function buildPaymentRequest(payments) {
+			return payments.paymentRequest({
+				countryCode: 'US',
+				currencyCode: 'USD',
+				total: {
+					amount: '1.00',
+					label: 'Total',
+				},
+			});
+		}
+
+		async function initializeApplePay(payments) {
+			const paymentRequest = buildPaymentRequest(payments);
+			const applePay = await payments.applePay(paymentRequest);
+			// Note: You do not need to `attach` applePay.
+			return applePay;
+		}
+
+		async function createPayment(token) {
+			const body = JSON.stringify({
+				locationId,
+				sourceId: token,
+				idempotencyKey: window.crypto.randomUUID(),
+			});
+
+			const paymentResponse = await fetch('/payment', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body,
+			});
+
+			if (paymentResponse.ok) {
+				return paymentResponse.json();
+			}
+
+			const errorBody = await paymentResponse.text();
+			throw new Error(errorBody);
+		}
+
+		// Change the parameter to 'paymentMethod'
+		async function tokenize(paymentMethod) {
+			let verificationDetails = null;
+			let tokenResult;
+
+			if (document.getElementById('include-verification-details').checked) {
+				tokenResult = await paymentMethod.tokenize({
+					intent: 'RECURRING_CHARGE',
+					recurringPaymentRequest: {
+						managementURL: 'https://example.com/manage-subscription',
+						paymentDescription: 'Monthly subscription to Premium Service',
+						regularBilling: {
+							amount: '1.00',
+							label: 'Monthly Subscription',
+							startDate: new Date(
+								Date.now() + 30 * 24 * 60 * 60 * 1000,
+							).toISOString().split('T')[0],
+						},
+						trialBilling: {
+							amount: '0.00',
+							label: 'Trial Period (1 month)',
+							startDate: new Date(
+								Date.now(),
+							).toISOString().split('T')[0],
+						},
+					},
+				});
+			} else {
+				tokenResult = await paymentMethod.tokenize();
+			}
+
+			if (tokenResult.status === 'OK') {
+				return tokenResult.token;
+			} else {
+				let errorMessage = `Tokenization failed with status: ${tokenResult.status}`;
+				if (tokenResult.errors) {
+					errorMessage += ` and errors: ${JSON.stringify(
+						tokenResult.errors,
+					)}`;
+				}
+
+				throw new Error(errorMessage);
+			}
+		}
+
+		// status is either SUCCESS or FAILURE;
+		function displayPaymentResults(status) {
+			const statusContainer = document.getElementById(
+				'payment-status-container',
+			);
+			if (status === 'SUCCESS') {
+				statusContainer.classList.remove('is-failure');
+				statusContainer.classList.add('is-success');
+			} else {
+				statusContainer.classList.remove('is-success');
+				statusContainer.classList.add('is-failure');
+			}
+
+			statusContainer.style.visibility = 'visible';
+		}
+
+		document.addEventListener('DOMContentLoaded', async function () {
+			if (!window.Square) {
+				throw new Error('Square.js failed to load properly');
+			}
+
+			ConsoleLogHTML.connect(document.getElementById("console-output"));
+
+			let payments;
+			try {
+				payments = window.Square.payments(appId, locationId);
+			} catch {
+				const statusContainer = document.getElementById(
+					'payment-status-container',
+				);
+				statusContainer.className = 'missing-credentials';
+				statusContainer.style.visibility = 'visible';
+				return;
+			}
+
+			let card;
+			try {
+				card = await initializeCard(payments);
+			} catch (e) {
+				console.error('Initializing Card failed', e);
+				return;
+			}
+
+			let applePay;
+			try {
+				applePay = await initializeApplePay(payments);
+			} catch (e) {
+				console.error('Initializing Apple Pay failed', e);
+				// There are a number of reason why Apple Pay may not be supported
+				// (e.g. Browser Support, Device Support, Account). Therefore you should handle
+				// initialization failures, while still loading other applicable payment methods.
+			}
+
+			async function handlePaymentMethodSubmission(event, paymentMethod) {
+				event.preventDefault();
+
+				try {
+					// disable the submit button as we await tokenization and make a payment request.
+					cardButton.disabled = true;
+					// await new Promise(resolve => setTimeout(resolve, 10000));
+					const token = await tokenize(paymentMethod);
+					console.log(`${token}`);
+					// Uncomment to charge the card.
+					// const paymentResults = await createPayment(token);
+					// console.debug('Payment Success', paymentResults);
+					displayPaymentResults('SUCCESS');
+				} catch (e) {
+					displayPaymentResults('FAILURE');
+					console.error(`${e.message}`);
+				} finally {
+					cardButton.disabled = false;
+				}
+			}
+
+			const cardButton = document.getElementById('card-button');
+			cardButton.addEventListener('click', async function (event) {
+				await handlePaymentMethodSubmission(event, card);
+			});
+
+			// Checkpoint 2.
+			if (applePay) {
+				const applePayButton = document.getElementById('apple-pay-button');
+				applePayButton.addEventListener('click', async function (event) {
+					await handlePaymentMethodSubmission(event, applePay);
+				});
+			}
+		});
+	</script>
+</head>
+
+<body>
+	<form id="payment-form">
+		<div id="apple-pay-button"></div>
+		<div id="card-container"></div>
+		<div id="options-container">
+			<!-- Check box for including verificationDetails, default checked -->
+			<label><input type="checkbox" id="include-verification-details" checked /> Include verification details</label>
+		</div>
+		<button id="card-button" type="button">Pay $1.00</button>
+	</form>
+	<div id="payment-status-container"></div>
+	<ul id="console-output"></ul>
+</body>
+
+</html>
