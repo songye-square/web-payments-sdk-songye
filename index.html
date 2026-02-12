@@ -70,31 +70,29 @@
 
 		// Change the parameter to 'paymentMethod'
 		async function tokenize(paymentMethod) {
-			let verificationDetails = null;
 			let tokenResult;
+			const customTokenizeArgsTextarea = document.getElementById('tokenize-args');
+			const jsonValidationError = document.getElementById('json-validation-error');
+			
+			// Clear any previous validation errors
+			jsonValidationError.style.display = 'none';
+			jsonValidationError.textContent = '';
 
-			if (document.getElementById('include-verification-details').checked) {
-				tokenResult = await paymentMethod.tokenize({
-					intent: 'RECURRING_CHARGE',
-					recurringPaymentRequest: {
-						managementURL: 'https://example.com/manage-subscription',
-						paymentDescription: 'Monthly subscription to Premium Service',
-						regularBilling: {
-							amount: '1.00',
-							label: 'Monthly Subscription',
-							startDate: new Date(
-								Date.now() + 30 * 24 * 60 * 60 * 1000,
-							).toISOString().split('T')[0],
-						},
-						trialBilling: {
-							amount: '0.00',
-							label: 'Trial Period (1 month)',
-							startDate: new Date(
-								Date.now(),
-							).toISOString().split('T')[0],
-						},
-					},
-				});
+			// Check if custom JSON arguments are provided
+			const customTokenizeArgsText = customTokenizeArgsTextarea.value.trim();
+			
+			if (customTokenizeArgsText) {
+				try {
+					// Parse and validate the JSON input
+					const tokenizeArgs = JSON.parse(customTokenizeArgsText);
+					console.log('Using custom tokenize arguments:', tokenizeArgs);
+					tokenResult = await paymentMethod.tokenize(tokenizeArgs);
+				} catch (parseError) {
+					// Show JSON validation error
+					jsonValidationError.textContent = `Invalid JSON: ${parseError.message}`;
+					jsonValidationError.style.display = 'block';
+					throw new Error(`Invalid JSON in custom arguments: ${parseError.message}`);
+				}
 			} else {
 				tokenResult = await paymentMethod.tokenize();
 			}
@@ -192,6 +190,44 @@
 				await handlePaymentMethodSubmission(event, card);
 			});
 
+			// Add event listeners for the tokenize arguments buttons
+			const loadExampleButton = document.getElementById('load-example-args');
+			const clearArgsButton = document.getElementById('clear-args');
+			const tokenizeArgsTextarea = document.getElementById('tokenize-args');
+
+			loadExampleButton.addEventListener('click', function() {
+				const exampleArgs = {
+					intent: 'RECURRING_CHARGE',
+					recurringPaymentRequest: {
+						managementURL: 'https://example.com/manage-subscription',
+						paymentDescription: 'Monthly subscription to Premium Service',
+						regularBilling: {
+							amount: '1.00',
+							label: 'Monthly Subscription',
+							startDate: new Date(
+								Date.now() + 30 * 24 * 60 * 60 * 1000,
+							).toISOString().split('T')[0],
+						},
+						trialBilling: {
+							amount: '0.00',
+							label: 'Trial Period (1 month)',
+							startDate: new Date(
+								Date.now(),
+							).toISOString().split('T')[0],
+						},
+					},
+				};
+				tokenizeArgsTextarea.value = JSON.stringify(exampleArgs, null, 2);
+				// Clear any validation errors when loading example
+				document.getElementById('json-validation-error').style.display = 'none';
+			});
+
+			clearArgsButton.addEventListener('click', function() {
+				tokenizeArgsTextarea.value = '';
+				// Clear any validation errors when clearing
+				document.getElementById('json-validation-error').style.display = 'none';
+			});
+
 			// Checkpoint 2.
 			if (applePay) {
 				const applePayButton = document.getElementById('apple-pay-button');
@@ -208,8 +244,22 @@
 		<div id="apple-pay-button"></div>
 		<div id="card-container"></div>
 		<div id="options-container">
-			<!-- Check box for including verificationDetails, default checked -->
-			<label><input type="checkbox" id="include-verification-details" checked /> Include verification details</label>
+			<!-- Multi-line input for custom tokenize arguments -->
+			<div style="margin-top: 15px;">
+				<label for="tokenize-args">Custom tokenize arguments (JSON):</label>
+				<div style="margin-top: 5px; margin-bottom: 5px;">
+					<button type="button" id="load-example-args" style="font-size: 12px; padding: 4px 8px;">Load Apple Pay RECURRING_CHARGE Example</button>
+					<button type="button" id="clear-args" style="font-size: 12px; padding: 4px 8px; margin-left: 5px;">Clear</button>
+				</div>
+				<textarea 
+					id="tokenize-args" 
+					rows="12" 
+					cols="50" 
+					placeholder="Enter JSON object for tokenize arguments (leave empty to use checkbox logic)"
+					style="width: 100%; font-family: monospace; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; padding: 8px;"
+				></textarea>
+				<div id="json-validation-error" style="color: red; font-size: 12px; margin-top: 5px; display: none;"></div>
+			</div>
 		</div>
 		<button id="card-button" type="button">Pay $1.00</button>
 	</form>
