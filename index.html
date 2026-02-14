@@ -190,10 +190,33 @@
 				await handlePaymentMethodSubmission(event, card);
 			});
 
+			// Populate textarea from URL param if present
+			const urlParams = new URLSearchParams(window.location.search);
+			const tokenizeArgsParam = urlParams.get('tokenizeArgs');
+			const tokenizeArgsTextarea = document.getElementById('tokenize-args');
+			if (tokenizeArgsParam) {
+				try {
+					tokenizeArgsTextarea.value = JSON.stringify(JSON.parse(tokenizeArgsParam), null, 2);
+				} catch {
+					tokenizeArgsTextarea.value = tokenizeArgsParam;
+				}
+			}
+
+			function syncUrlParam() {
+				const url = new URL(window.location);
+				if (tokenizeArgsTextarea.value.trim()) {
+					url.searchParams.set('tokenizeArgs', tokenizeArgsTextarea.value.trim());
+				} else {
+					url.searchParams.delete('tokenizeArgs');
+				}
+				history.replaceState(null, '', url);
+			}
+
+			tokenizeArgsTextarea.addEventListener('input', syncUrlParam);
+
 			// Add event listeners for the tokenize arguments buttons
 			const loadExampleButton = document.getElementById('load-example-args');
 			const clearArgsButton = document.getElementById('clear-args');
-			const tokenizeArgsTextarea = document.getElementById('tokenize-args');
 
 			loadExampleButton.addEventListener('click', function() {
 				const exampleArgs = {
@@ -220,12 +243,14 @@
 				tokenizeArgsTextarea.value = JSON.stringify(exampleArgs, null, 2);
 				// Clear any validation errors when loading example
 				document.getElementById('json-validation-error').style.display = 'none';
+				syncUrlParam();
 			});
 
 			clearArgsButton.addEventListener('click', function() {
 				tokenizeArgsTextarea.value = '';
 				// Clear any validation errors when clearing
 				document.getElementById('json-validation-error').style.display = 'none';
+				syncUrlParam();
 			});
 
 			// Checkpoint 2.
