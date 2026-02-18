@@ -40,20 +40,32 @@
 			return card;
 		}
 
+		function getPaymentAmount() {
+			const input = document.getElementById('payment-amount');
+			return input ? input.value.trim() || '1.00' : '1.00';
+		}
+
+		function getPaymentLabel() {
+			const input = document.getElementById('payment-label');
+			return input ? input.value.trim() || 'Total' : 'Total';
+		}
+
 		function buildPaymentRequest(payments) {
 			return payments.paymentRequest({
 				countryCode: 'US',
 				currencyCode: 'USD',
 				total: {
-					amount: '1.00',
-					label: 'Total',
+					amount: getPaymentAmount(),
+					label: getPaymentLabel(),
 				},
 			});
 		}
 
+		let currentPaymentRequest;
+
 		async function initializeApplePay(payments) {
-			const paymentRequest = buildPaymentRequest(payments);
-			const applePay = await payments.applePay(paymentRequest);
+			currentPaymentRequest = buildPaymentRequest(payments);
+			const applePay = await payments.applePay(currentPaymentRequest);
 			// Note: You do not need to `attach` applePay.
 			return applePay;
 		}
@@ -217,10 +229,13 @@
 				await handlePaymentMethodSubmission(event, card);
 			});
 
-			// Populate textarea from URL param if present
+			// Populate fields from URL params if present
 			const urlParams = new URLSearchParams(window.location.search);
 			const tokenizeArgsParam = urlParams.get('tokenizeArgs');
 			const tokenizeArgsTextarea = document.getElementById('tokenize-args');
+			const amountInput = document.getElementById('payment-amount');
+			const labelInput = document.getElementById('payment-label');
+
 			if (tokenizeArgsParam) {
 				try {
 					tokenizeArgsTextarea.value = JSON.stringify(JSON.parse(tokenizeArgsParam), null, 2);
@@ -229,17 +244,66 @@
 				}
 			}
 
-			function syncUrlParam() {
+			const amountParam = urlParams.get('amount');
+			if (amountParam) {
+				amountInput.value = amountParam;
+			}
+
+			const labelParam = urlParams.get('label');
+			if (labelParam) {
+				labelInput.value = labelParam;
+			}
+
+			function updateButtonText() {
+				cardButton.textContent = `Pay $${getPaymentAmount()}`;
+			}
+			updateButtonText();
+
+			function syncUrlParams() {
 				const url = new URL(window.location);
+
 				if (tokenizeArgsTextarea.value.trim()) {
 					url.searchParams.set('tokenizeArgs', tokenizeArgsTextarea.value.trim());
 				} else {
 					url.searchParams.delete('tokenizeArgs');
 				}
+
+				if (amountInput.value.trim() && amountInput.value.trim() !== '1.00') {
+					url.searchParams.set('amount', amountInput.value.trim());
+				} else {
+					url.searchParams.delete('amount');
+				}
+
+				if (labelInput.value.trim() && labelInput.value.trim() !== 'Total') {
+					url.searchParams.set('label', labelInput.value.trim());
+				} else {
+					url.searchParams.delete('label');
+				}
+
 				history.replaceState(null, '', url);
 			}
 
-			tokenizeArgsTextarea.addEventListener('input', syncUrlParam);
+			tokenizeArgsTextarea.addEventListener('input', syncUrlParams);
+			function updatePaymentRequest() {
+				if (currentPaymentRequest) {
+					currentPaymentRequest.update({
+						total: {
+							amount: getPaymentAmount(),
+							label: getPaymentLabel(),
+						},
+					});
+				}
+			}
+
+			amountInput.addEventListener('input', function() {
+				updateButtonText();
+				updatePaymentRequest();
+				syncUrlParams();
+			});
+			labelInput.addEventListener('input', function() {
+				updatePaymentRequest();
+				syncUrlParams();
+			});
 
 			// Add event listeners for the tokenize arguments buttons
 			const loadExampleButton = document.getElementById('load-example-args');
@@ -270,14 +334,17 @@
 				tokenizeArgsTextarea.value = JSON.stringify(exampleArgs, null, 2);
 				// Clear any validation errors when loading example
 				document.getElementById('json-validation-error').style.display = 'none';
-				syncUrlParam();
+				syncUrlParams();
 			});
 
 			clearArgsButton.addEventListener('click', function() {
 				tokenizeArgsTextarea.value = '';
+				amountInput.value = '1.00';
+				labelInput.value = 'Total';
+				updateButtonText();
 				// Clear any validation errors when clearing
 				document.getElementById('json-validation-error').style.display = 'none';
-				syncUrlParam();
+				syncUrlParams();
 			});
 
 			// Checkpoint 2.
@@ -304,6 +371,17 @@
 		<div id="google-pay-button"></div>
 		<div id="card-container"></div>
 		<div id="options-container">
+			<!-- Payment amount and label -->
+			<div style="margin-top: 15px; display: flex; gap: 10px;">
+				<div style="flex: 1;">
+					<label for="payment-amount">Amount:</label>
+					<input type="number" step="0.01" id="payment-amount" value="1.00" style="width: 100%; font-family: monospace; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; padding: 8px; box-sizing: border-box;" />
+				</div>
+				<div style="flex: 1;">
+					<label for="payment-label">Label:</label>
+					<input type="text" id="payment-label" value="Total" style="width: 100%; font-family: monospace; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; padding: 8px; box-sizing: border-box;" />
+				</div>
+			</div>
 			<!-- Multi-line input for custom tokenize arguments -->
 			<div style="margin-top: 15px;">
 				<label for="tokenize-args">Custom tokenize arguments (JSON):</label>
