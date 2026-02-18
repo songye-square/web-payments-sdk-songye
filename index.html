@@ -58,6 +58,13 @@
 			return applePay;
 		}
 
+		async function initializeGooglePay(payments) {
+			const paymentRequest = buildPaymentRequest(payments);
+			const googlePay = await payments.googlePay(paymentRequest);
+			await googlePay.attach('#google-pay-button');
+			return googlePay;
+		}
+
 		async function createPayment(token) {
 			const body = JSON.stringify({
 				locationId,
@@ -177,6 +184,13 @@
 				// initialization failures, while still loading other applicable payment methods.
 			}
 
+			let googlePay;
+			try {
+				googlePay = await initializeGooglePay(payments);
+			} catch (e) {
+				console.error('Initializing Google Pay failed', e);
+			}
+
 			async function handlePaymentMethodSubmission(event, paymentMethod) {
 				event.preventDefault();
 
@@ -273,6 +287,13 @@
 					await handlePaymentMethodSubmission(event, applePay);
 				});
 			}
+
+			if (googlePay) {
+				const googlePayButton = document.getElementById('google-pay-button');
+				googlePayButton.addEventListener('click', async function (event) {
+					await handlePaymentMethodSubmission(event, googlePay);
+				});
+			}
 		});
 	</script>
 </head>
@@ -280,6 +301,7 @@
 <body>
 	<form id="payment-form">
 		<div id="apple-pay-button"></div>
+		<div id="google-pay-button"></div>
 		<div id="card-container"></div>
 		<div id="options-container">
 			<!-- Multi-line input for custom tokenize arguments -->
