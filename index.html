@@ -25,6 +25,41 @@
 			cursor: pointer;
 			margin-top: 15px;
 		}
+
+		/* Custom arguments section styles */
+		.custom-args-section {
+			margin-top: 15px;
+		}
+
+		.custom-args-buttons {
+			margin-top: 5px;
+			margin-bottom: 5px;
+		}
+
+		.custom-args-button {
+			font-size: 12px;
+			padding: 4px 8px;
+		}
+
+		.custom-args-button + .custom-args-button {
+			margin-left: 5px;
+		}
+
+		.custom-args-textarea {
+			width: 100%;
+			font-family: monospace;
+			font-size: 12px;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+			padding: 8px;
+		}
+
+		.custom-args-error {
+			color: red;
+			font-size: 12px;
+			margin-top: 5px;
+			display: none;
+		}
 	</style>
 	<script type="application/javascript"
 		src="//cdn.rawgit.com/Alorel/console-log-html/master/console-log-html.min.js"></script>
@@ -41,14 +76,39 @@
 		}
 
 		function buildPaymentRequest(payments) {
-			return payments.paymentRequest({
+			const customPaymentRequestArgsTextarea = document.getElementById('payment-request-args');
+			const paymentRequestJsonValidationError = document.getElementById('payment-request-json-validation-error');
+			
+			// Clear any previous validation errors
+			paymentRequestJsonValidationError.style.display = 'none';
+			paymentRequestJsonValidationError.textContent = '';
+
+			// Check if custom JSON arguments are provided
+			const customPaymentRequestArgsText = customPaymentRequestArgsTextarea.value.trim();
+			
+			let paymentRequestArgs = {
 				countryCode: 'US',
 				currencyCode: 'USD',
 				total: {
 					amount: '1.00',
 					label: 'Total',
 				},
-			});
+			};
+
+			if (customPaymentRequestArgsText) {
+				try {
+					// Parse and validate the JSON input
+					paymentRequestArgs = JSON.parse(customPaymentRequestArgsText);
+					console.log('Using custom paymentRequest arguments:', paymentRequestArgs);
+				} catch (parseError) {
+					// Show JSON validation error
+					paymentRequestJsonValidationError.textContent = `Invalid JSON: ${parseError.message}`;
+					paymentRequestJsonValidationError.style.display = 'block';
+					throw new Error(`Invalid JSON in custom paymentRequest arguments: ${parseError.message}`);
+				}
+			}
+
+			return payments.paymentRequest(paymentRequestArgs);
 		}
 
 		async function initializeApplePay(payments) {
@@ -217,8 +277,10 @@
 				await handlePaymentMethodSubmission(event, card);
 			});
 
-			// Populate textarea from URL param if present
+			// Populate textareas from URL params if present
 			const urlParams = new URLSearchParams(window.location.search);
+			
+			// Handle tokenize arguments
 			const tokenizeArgsParam = urlParams.get('tokenizeArgs');
 			const tokenizeArgsTextarea = document.getElementById('tokenize-args');
 			if (tokenizeArgsParam) {
@@ -229,17 +291,77 @@
 				}
 			}
 
-			function syncUrlParam() {
+			// Handle paymentRequest arguments
+			const paymentRequestArgsParam = urlParams.get('paymentRequestArgs');
+			const paymentRequestArgsTextarea = document.getElementById('payment-request-args');
+			if (paymentRequestArgsParam) {
+				try {
+					paymentRequestArgsTextarea.value = JSON.stringify(JSON.parse(paymentRequestArgsParam), null, 2);
+				} catch {
+					paymentRequestArgsTextarea.value = paymentRequestArgsParam;
+				}
+			}
+
+			function syncUrlParams() {
 				const url = new URL(window.location);
+				
+				// Sync tokenize args
 				if (tokenizeArgsTextarea.value.trim()) {
 					url.searchParams.set('tokenizeArgs', tokenizeArgsTextarea.value.trim());
 				} else {
 					url.searchParams.delete('tokenizeArgs');
 				}
+				
+				// Sync paymentRequest args
+				if (paymentRequestArgsTextarea.value.trim()) {
+					url.searchParams.set('paymentRequestArgs', paymentRequestArgsTextarea.value.trim());
+				} else {
+					url.searchParams.delete('paymentRequestArgs');
+				}
+				
 				history.replaceState(null, '', url);
 			}
 
-			tokenizeArgsTextarea.addEventListener('input', syncUrlParam);
+			tokenizeArgsTextarea.addEventListener('input', syncUrlParams);
+			paymentRequestArgsTextarea.addEventListener('input', syncUrlParams);
+
+			// Add event listeners for the paymentRequest arguments buttons
+			const loadExamplePaymentRequestButton = document.getElementById('load-example-payment-request-args');
+			const clearPaymentRequestArgsButton = document.getElementById('clear-payment-request-args');
+
+			loadExamplePaymentRequestButton.addEventListener('click', function() {
+				const examplePaymentRequestArgs = {
+					countryCode: 'US',
+					currencyCode: 'USD',
+					total: {
+						amount: '5.00',
+						label: 'Custom Total',
+					},
+					displayItems: [
+						{
+							amount: '3.00',
+							label: 'Product',
+						},
+						{
+							amount: '2.00',
+							label: 'Shipping',
+						}
+					],
+					requestBillingContact: true,
+					requestShippingContact: true
+				};
+				paymentRequestArgsTextarea.value = JSON.stringify(examplePaymentRequestArgs, null, 2);
+				// Clear any validation errors when loading example
+				document.getElementById('payment-request-json-validation-error').style.display = 'none';
+				syncUrlParams();
+			});
+
+			clearPaymentRequestArgsButton.addEventListener('click', function() {
+				paymentRequestArgsTextarea.value = '';
+				// Clear any validation errors when clearing
+				document.getElementById('payment-request-json-validation-error').style.display = 'none';
+				syncUrlParams();
+			});
 
 			// Add event listeners for the tokenize arguments buttons
 			const loadExampleButton = document.getElementById('load-example-args');
@@ -270,14 +392,14 @@
 				tokenizeArgsTextarea.value = JSON.stringify(exampleArgs, null, 2);
 				// Clear any validation errors when loading example
 				document.getElementById('json-validation-error').style.display = 'none';
-				syncUrlParam();
+				syncUrlParams();
 			});
 
 			clearArgsButton.addEventListener('click', function() {
 				tokenizeArgsTextarea.value = '';
 				// Clear any validation errors when clearing
 				document.getElementById('json-validation-error').style.display = 'none';
-				syncUrlParam();
+				syncUrlParams();
 			});
 
 			// Checkpoint 2.
@@ -304,21 +426,38 @@
 		<div id="google-pay-button"></div>
 		<div id="card-container"></div>
 		<div id="options-container">
+			<!-- Multi-line input for custom paymentRequest arguments -->
+			<div class="custom-args-section">
+				<label for="payment-request-args">Custom paymentRequest arguments (JSON):</label>
+				<div class="custom-args-buttons">
+					<button type="button" id="load-example-payment-request-args" class="custom-args-button">Load Example</button>
+					<button type="button" id="clear-payment-request-args" class="custom-args-button">Clear</button>
+				</div>
+				<textarea 
+					id="payment-request-args" 
+					class="custom-args-textarea"
+					rows="8" 
+					cols="50" 
+					placeholder="Enter JSON object for paymentRequest arguments (leave empty to use default)"
+				></textarea>
+				<div id="payment-request-json-validation-error" class="custom-args-error"></div>
+			</div>
+			
 			<!-- Multi-line input for custom tokenize arguments -->
-			<div style="margin-top: 15px;">
+			<div class="custom-args-section">
 				<label for="tokenize-args">Custom tokenize arguments (JSON):</label>
-				<div style="margin-top: 5px; margin-bottom: 5px;">
-					<button type="button" id="load-example-args" style="font-size: 12px; padding: 4px 8px;">Load Apple Pay RECURRING_CHARGE Example</button>
-					<button type="button" id="clear-args" style="font-size: 12px; padding: 4px 8px; margin-left: 5px;">Clear</button>
+				<div class="custom-args-buttons">
+					<button type="button" id="load-example-args" class="custom-args-button">Load Apple Pay RECURRING_CHARGE Example</button>
+					<button type="button" id="clear-args" class="custom-args-button">Clear</button>
 				</div>
 				<textarea 
 					id="tokenize-args" 
+					class="custom-args-textarea"
 					rows="12" 
 					cols="50" 
 					placeholder="Enter JSON object for tokenize arguments (leave empty to not pass any arguments)"
-					style="width: 100%; font-family: monospace; font-size: 12px; border: 1px solid #ccc; border-radius: 4px; padding: 8px;"
 				></textarea>
-				<div id="json-validation-error" style="color: red; font-size: 12px; margin-top: 5px; display: none;"></div>
+				<div id="json-validation-error" class="custom-args-error"></div>
 			</div>
 		</div>
 		<button id="tokenize-button" type="button">Tokenize</button>
